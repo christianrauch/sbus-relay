@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
-#include <netinet/in.h>
+//#include <netinet/in.h>
 #include <stdbool.h>
 
 
@@ -14,7 +14,51 @@
 
 #define PROJECT_NAME "sbus-relay"
 
-#define PORT "51324"
+#define PORT 51324
+
+int bind_socket(in_port_t port) {
+    const struct addrinfo hints = {
+        .ai_flags = AI_PASSIVE,
+        .ai_family = AF_UNSPEC,
+        .ai_socktype = SOCK_DGRAM,
+        .ai_protocol = 0,
+        .ai_addrlen = 0,
+        .ai_addr = NULL,
+        .ai_canonname = NULL,
+        .ai_next = NULL,
+    };
+
+    // convert port from int to string
+//    int length = snprintf_s(NULL, 0, "%d", port);
+    int length = snprintf(NULL, 0, "%d", port);
+    char* str = malloc( length + 1 );
+    snprintf(str, length + 1, "%d", port);
+
+    struct addrinfo *res;
+
+    const int err = getaddrinfo(NULL, str, &hints, &res);
+    if(err != 0) {
+        fprintf(stderr, "Failed to get : %s\n", gai_strerror(err));
+        return EXIT_FAILURE;
+    }
+
+    const int socketfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (socketfd == -1) {
+        perror("Failed to create socket");
+        return EXIT_FAILURE;
+    }
+
+    if(bind(socketfd, res->ai_addr, res->ai_addrlen) == -1) {
+        perror("Failed to bind address");
+        return EXIT_FAILURE;
+    }
+
+    free(str);
+
+    freeaddrinfo(res);
+
+    return socketfd;
+}
 
 int main(int argc, char **argv) {
     if(argc != 1) {
@@ -43,37 +87,7 @@ int main(int argc, char **argv) {
 //    }
 
     // NEW way:
-    const struct addrinfo hints = {
-        .ai_flags = AI_PASSIVE,
-        .ai_family = AF_UNSPEC,
-        .ai_socktype = SOCK_DGRAM,
-        .ai_protocol = 0,
-        .ai_addrlen = 0,
-        .ai_addr = NULL,
-        .ai_canonname = NULL,
-        .ai_next = NULL,
-    };
-
-    struct addrinfo *res;
-
-    const int err = getaddrinfo(NULL, PORT, &hints, &res);
-    if(err != 0) {
-        fprintf(stderr, "Failed to get : %s\n", gai_strerror(err));
-        return EXIT_FAILURE;
-    }
-
-    const int socketfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (socketfd == -1) {
-        perror("Failed to create socket");
-        return EXIT_FAILURE;
-    }
-
-    if(bind(socketfd, res->ai_addr, res->ai_addrlen) == -1) {
-        perror("Failed to bind address");
-        return EXIT_FAILURE;
-    }
-
-    freeaddrinfo(res);
+    const int socketfd = bind_socket(PORT);
 
     while (true) {
         //
