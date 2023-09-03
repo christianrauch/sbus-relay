@@ -9,6 +9,7 @@
 //#include <netinet/in.h>
 #include <stdbool.h>
 #include <pty.h>
+#include<signal.h>
 
 
 // https://beej.us/guide/bgnet/
@@ -16,6 +17,8 @@
 #define PROJECT_NAME "sbus-relay"
 
 #define PORT 51324
+
+#define LINK "/tmp/SBUS"
 
 int bind_socket(in_port_t port) {
     const struct addrinfo hints = {
@@ -61,6 +64,21 @@ int bind_socket(in_port_t port) {
     return socketfd;
 }
 
+bool running = true;
+
+void sig_handler(int signum){
+    printf("sign %d\n", signum);
+//    signal(SIGINT,SIG_DFL);   // Re Register signal handler for default action
+    if (signum == SIGINT) {
+        running = false;
+    }
+    if (unlink(LINK) == -1) {
+        perror("Failed to unlink");
+//        return EXIT_FAILURE;
+    }
+    exit(EXIT_SUCCESS);
+}
+
 int main(int argc, char **argv) {
     if(argc != 1) {
         printf("%s takes no arguments.\n", argv[0]);
@@ -82,8 +100,19 @@ int main(int argc, char **argv) {
 
     printf("pty %s.\n", name);
 
-    if (symlink(name, "/tmp/SBUS") == -1) {
+    if (access(LINK, F_OK) == 0) {
+        // symlink already exist
+        if (unlink(LINK) == -1) {
+            perror("Failed to unlink");
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (symlink(name, LINK) == -1) {
         perror("Failed to create symlink");
+//        if (errno == EEXIST) {
+//            unlink("/tmp/SBUS");
+//        }
         return EXIT_FAILURE;
     }
 
@@ -109,7 +138,10 @@ int main(int argc, char **argv) {
     // NEW way:
     const int socketfd = bind_socket(PORT);
 
-    while (true) {
+    signal(SIGINT, sig_handler);
+    signal(SIGQUIT, sig_handler);
+
+    while (running) {
         //
         struct sockaddr_storage peer_addr;
         socklen_t peer_addr_len;
@@ -148,12 +180,11 @@ int main(int argc, char **argv) {
         write(master, buf, nread);
     }
 
+    printf("bye!\n"); fflush(stdout);
+
     close(socketfd);
 
-    if (unlink("/tmp/SBUS") == -1) {
-        perror("Failed to unlink");
-        return EXIT_FAILURE;
-    }
+
 
     return EXIT_SUCCESS;
 }
