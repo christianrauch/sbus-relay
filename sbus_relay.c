@@ -8,6 +8,7 @@
 #include <stdio.h>
 //#include <netinet/in.h>
 #include <stdbool.h>
+#include <pty.h>
 
 
 // https://beej.us/guide/bgnet/
@@ -67,6 +68,25 @@ int main(int argc, char **argv) {
     }
     printf("This is project %s.\n", PROJECT_NAME);
 
+    int master;
+    int slave;
+    char name[200];
+    if (openpty(&master, &slave, name, NULL, NULL) == -1) {
+        perror("Failed to create PTY");
+        return EXIT_FAILURE;
+    }
+
+//    fd_set rfds;
+//    FD_ZERO(&rfds);
+//    FD_SET(master, &rfds);
+
+    printf("pty %s.\n", name);
+
+    if (symlink(name, "/tmp/SBUS") == -1) {
+        perror("Failed to create symlink");
+        return EXIT_FAILURE;
+    }
+
 
     // OLD way:
 //    const int socketfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -123,10 +143,17 @@ int main(int argc, char **argv) {
         }
         else
             fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
+
+//        ssize_t size = read(master, buf, BUF_SIZE);
+        write(master, buf, nread);
     }
 
     close(socketfd);
 
+    if (unlink("/tmp/SBUS") == -1) {
+        perror("Failed to unlink");
+        return EXIT_FAILURE;
+    }
 
     return EXIT_SUCCESS;
 }
