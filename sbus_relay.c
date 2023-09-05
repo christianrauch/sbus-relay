@@ -9,7 +9,8 @@
 //#include <netinet/in.h>
 #include <stdbool.h>
 #include <pty.h>
-#include<signal.h>
+#include <signal.h>
+#include <fcntl.h>
 
 
 // https://beej.us/guide/bgnet/
@@ -72,10 +73,10 @@ void sig_handler(int signum){
     if (signum == SIGINT) {
         running = false;
     }
-    if (unlink(LINK) == -1) {
-        perror("Failed to unlink");
-//        return EXIT_FAILURE;
-    }
+//    if (unlink(LINK) == -1) {
+//        perror("Failed to unlink");
+////        return EXIT_FAILURE;
+//    }
     exit(EXIT_SUCCESS);
 }
 
@@ -86,35 +87,58 @@ int main(int argc, char **argv) {
     }
     printf("This is project %s.\n", PROJECT_NAME);
 
-    int master;
-    int slave;
-    char name[200];
-    if (openpty(&master, &slave, name, NULL, NULL) == -1) {
-        perror("Failed to create PTY");
-        return EXIT_FAILURE;
-    }
+//    int master;
+//    int slave;
+//    char name[200];
+//    if (openpty(&master, &slave, name, NULL, NULL) == -1) {
+//        perror("Failed to create PTY");
+//        return EXIT_FAILURE;
+//    }
 
-//    fd_set rfds;
-//    FD_ZERO(&rfds);
-//    FD_SET(master, &rfds);
+////    fd_set rfds;
+////    FD_ZERO(&rfds);
+////    FD_SET(master, &rfds);
 
-    printf("pty %s.\n", name);
+//    /* serial port parameters */
+//    //#define BAUDRATE    B100000
+//    #define BAUDRATE B115200
+//    struct termios newtio;
+//    memset(&newtio, 0, sizeof(newtio));
+//    struct termios oldtio;
+//    tcgetattr(master, &oldtio);
 
-    if (access(LINK, F_OK) == 0) {
-        // symlink already exist
-        if (unlink(LINK) == -1) {
-            perror("Failed to unlink");
-            return EXIT_FAILURE;
-        }
-    }
+//    newtio = oldtio;
+//    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
+//    newtio.c_iflag = 0;
+//    newtio.c_oflag = 0;
+//    newtio.c_lflag = 0;
+//    newtio.c_cc[VMIN] = 1;
+//    newtio.c_cc[VTIME] = 0;
+//    tcflush(master, TCIFLUSH);
 
-    if (symlink(name, LINK) == -1) {
-        perror("Failed to create symlink");
-//        if (errno == EEXIST) {
-//            unlink("/tmp/SBUS");
+//    printf("pty %s.\n", name);
+
+//    if (access(LINK, F_OK) == 0) {
+//        // symlink already exist
+//        if (unlink(LINK) == -1) {
+//            perror("Failed to unlink");
+//            return EXIT_FAILURE;
 //        }
-        return EXIT_FAILURE;
-    }
+//    }
+
+//    if (symlink(name, LINK) == -1) {
+//        perror("Failed to create symlink");
+////        if (errno == EEXIST) {
+////            unlink("/tmp/SBUS");
+////        }
+//        return EXIT_FAILURE;
+//    }
+
+    // via tty0tty
+
+    int master = open("/dev/tnt1", O_RDWR | O_NOCTTY | O_NDELAY);
+    if (master == -1) { perror("open_port: Unable to open port − "); }
+    else {fcntl(master, F_SETFL, 0);}
 
 
     // OLD way:
@@ -135,11 +159,39 @@ int main(int argc, char **argv) {
 //        return EXIT_FAILURE;
 //    }
 
+//    int n = write(fd, "ATZ\r", 4);
+//    if (n < 0)
+//        fputs("write() of 4 bytes failed!\n", stderr);
+
     // NEW way:
     const int socketfd = bind_socket(PORT);
 
     signal(SIGINT, sig_handler);
     signal(SIGQUIT, sig_handler);
+
+    printf("sbus\n"); fflush(stdout);
+    // https://github.com/bolderflight/sbus/blob/main/README.md
+//    struct channel_t { int value : 11; };
+//    struct sbus_t {
+////        uint8_t header;
+//        struct channel_t channel [16];
+////        uint8_t status;
+////        uint8_t footer;
+//    };
+//    printf("sbus_t size: %lu\n", sizeof(struct sbus_t)); fflush(stdout);
+    uint8_t sbus[25];
+    memset(sbus, 0, sizeof(sbus));
+    sbus[0] = 0x0F;
+//    sbus[1] = 100;
+//    struct sbus_t sbus;
+//    sbus.header = 0x0F;
+//    sbus.channel[0].value = 100;
+//    while (running) {
+////        write(master, sbus, sizeof (sbus));
+//        write(fd, sbus, sizeof (sbus));
+//    }
+
+//    return 0;
 
     while (running) {
         //
@@ -176,8 +228,16 @@ int main(int argc, char **argv) {
         else
             fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
 
+        // reset
+        memset(sbus, 0, sizeof(sbus));
+        sbus[0] = 0x0F;
 //        ssize_t size = read(master, buf, BUF_SIZE);
-        write(master, buf, nread);
+//        write(master, buf, nread);
+        memcpy(&sbus[1], buf, 23);
+//        write(fd, buf, nread);
+//        write(fd, sbus, 24);
+//        sbus[1] = buf[0];
+        write(master, sbus, sizeof (sbus));
     }
 
     printf("bye!\n"); fflush(stdout);
