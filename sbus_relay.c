@@ -11,6 +11,7 @@
 #include <pty.h>
 #include <signal.h>
 #include <fcntl.h>
+#include  <math.h>
 
 
 // https://beej.us/guide/bgnet/
@@ -20,6 +21,10 @@
 #define PORT 51324
 
 #define LINK "/tmp/SBUS"
+
+#define MAX_CHANNELS 16
+// uint8 len + 16 * float32 (4) = 65 bytes max
+#define BUF_MAX_SIZE sizeof(uint8_t) + sizeof(float) * MAX_CHANNELS
 
 int bind_socket(in_port_t port) {
     const struct addrinfo hints = {
@@ -63,6 +68,66 @@ int bind_socket(in_port_t port) {
     freeaddrinfo(res);
 
     return socketfd;
+}
+
+void deserialise_channels(const uint8_t (*const buf)[BUF_MAX_SIZE], float (*channels)[MAX_CHANNELS])
+{
+    const uint8_t n = (*buf)[0];
+    for(size_t i=0; i<n; i++)
+    {
+        // TODO: unpack float32
+//        (*channels)[i] = ...;
+    }
+}
+
+void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*sbus)[25])
+{
+    // https://github.com/bolderflight/sbus/blob/main/README.md
+    memset(sbus, 0, 25 * sizeof(uint8_t));
+    (*sbus)[0] = 0x0F; // header
+    (*sbus)[24] = 0x00; // footer
+
+    uint16_t channels_us[MAX_CHANNELS];
+
+    // map -1...+1 to 1000...2000 us
+    for(size_t i=0; i<MAX_CHANNELS; i++)
+    {
+        channels_us[i] = 1500 + 500 * fmaxf(-1, fminf((*channels)[i], +1));
+        // only need the first 11 bits
+    }
+
+    // pack channels as 11bit integer
+
+    // |00.....|01.....|02.....|03.....|04.....|05.....|06.....|07.....|08.....|09.....|10..... (11 * 8bits)
+    // |00........|01........|02........|03........|04........|05........|06........|07........ (8 * 11bits)
+
+    // |11.....|12.....|13.....|14.....|15.....|16.....|17.....|18.....|19.....|20.....|21..... (11 * 8bits)
+    // |08........|09........|10........|11........|12........|13........|14........|15........ (8 * 11bits)
+
+    // https://github.com/Reefwing-Software/Reefwing-SBUS/blob/2.0.1/src/ReefwingSBUS.cpp#L188-L209
+    (*sbus)[1] = (uint8_t) ((channels_us[0] & 0x07FF));
+    (*sbus)[2] = (uint8_t) ((channels_us[0] & 0x07FF)>>8 | (channels_us[1] & 0x07FF)<<3);
+    (*sbus)[3] = (uint8_t) ((channels_us[1] & 0x07FF)>>5 | (channels_us[2] & 0x07FF)<<6);
+    (*sbus)[4] = (uint8_t) ((channels_us[2] & 0x07FF)>>2);
+    (*sbus)[5] = (uint8_t) ((channels_us[2] & 0x07FF)>>10 | (channels_us[3] & 0x07FF)<<1);
+    (*sbus)[6] = (uint8_t) ((channels_us[3] & 0x07FF)>>7 | (channels_us[4] & 0x07FF)<<4);
+    (*sbus)[7] = (uint8_t) ((channels_us[4] & 0x07FF)>>4 | (channels_us[5] & 0x07FF)<<7);
+    (*sbus)[8] = (uint8_t) ((channels_us[5] & 0x07FF)>>1);
+    (*sbus)[9] = (uint8_t) ((channels_us[5] & 0x07FF)>>9 | (channels_us[6] & 0x07FF)<<2);
+    (*sbus)[10] = (uint8_t) ((channels_us[6] & 0x07FF)>>6 | (channels_us[7] & 0x07FF)<<5);
+    (*sbus)[11] = (uint8_t) ((channels_us[7] & 0x07FF)>>3);
+    (*sbus)[12] = (uint8_t) ((channels_us[8] & 0x07FF));
+    (*sbus)[13] = (uint8_t) ((channels_us[8] & 0x07FF)>>8 | (channels_us[9] & 0x07FF)<<3);
+    (*sbus)[14] = (uint8_t) ((channels_us[9] & 0x07FF)>>5 | (channels_us[10] & 0x07FF)<<6);
+    (*sbus)[15] = (uint8_t) ((channels_us[10] & 0x07FF)>>2);
+    (*sbus)[16] = (uint8_t) ((channels_us[10] & 0x07FF)>>10 | (channels_us[11] & 0x07FF)<<1);
+    (*sbus)[17] = (uint8_t) ((channels_us[11] & 0x07FF)>>7 | (channels_us[12] & 0x07FF)<<4);
+    (*sbus)[18] = (uint8_t) ((channels_us[12] & 0x07FF)>>4 | (channels_us[13] & 0x07FF)<<7);
+    (*sbus)[19] = (uint8_t) ((channels_us[13] & 0x07FF)>>1);
+    (*sbus)[20] = (uint8_t) ((channels_us[13] & 0x07FF)>>9 | (channels_us[14] & 0x07FF)<<2);
+    (*sbus)[21] = (uint8_t) ((channels_us[14] & 0x07FF)>>6 | (channels_us[15] & 0x07FF)<<5);
+    (*sbus)[22] = (uint8_t) ((channels_us[15] & 0x07FF)>>3);
+
 }
 
 bool running = true;
@@ -138,8 +203,8 @@ int main(int argc, char **argv) {
 
 //    #define SLAVE_PATH "/dev/ttyV0"
 
-    int master = open("/dev/vtmx", O_RDWR);
-    if (master == -1) { perror("open_port: Unable to open port − "); }
+    int master = open("/dev/vtmx", O_WRONLY);
+    if (master == -1) { perror("Unable to open port: "); }
     else {fcntl(master, F_SETFL, 0);}
 
 
@@ -200,8 +265,7 @@ int main(int argc, char **argv) {
         struct sockaddr_storage peer_addr;
         socklen_t peer_addr_len;
         ssize_t nread;
-        #define BUF_SIZE 500
-        char buf[BUF_SIZE];
+        uint8_t buf[BUF_MAX_SIZE];
 
         printf("recvfrom...\n"); fflush(stdout);
 //        nread = recvfrom(socketfd, buf, BUF_SIZE, 0, (struct sockaddr *) &peer_addr, &peer_addr_len);
@@ -212,7 +276,7 @@ int main(int argc, char **argv) {
 //        printf("buf: %s\n", buf); fflush(stdout);
 
         peer_addr_len = sizeof(struct sockaddr_storage);
-        nread = recvfrom(socketfd, buf, BUF_SIZE, 0,
+        nread = recvfrom(socketfd, buf, BUF_MAX_SIZE, 0,
                          (struct sockaddr *) &peer_addr, &peer_addr_len);
         if (nread == -1)
             continue;
@@ -230,15 +294,19 @@ int main(int argc, char **argv) {
         else
             fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
 
-        // reset
-        memset(sbus, 0, sizeof(sbus));
-        sbus[0] = 0x0F;
-//        ssize_t size = read(master, buf, BUF_SIZE);
-//        write(master, buf, nread);
-        memcpy(&sbus[1], buf, 23);
-//        write(fd, buf, nread);
-//        write(fd, sbus, 24);
-//        sbus[1] = buf[0];
+        float channels[MAX_CHANNELS];
+        deserialise_channels(&buf, &channels);
+        serialise_channels(&channels, &sbus);
+
+//        // reset
+//        memset(sbus, 0, sizeof(sbus));
+//        sbus[0] = 0x0F;
+////        ssize_t size = read(master, buf, BUF_SIZE);
+////        write(master, buf, nread);
+//        memcpy(&sbus[1], buf, 23);
+////        write(fd, buf, nread);
+////        write(fd, sbus, 24);
+////        sbus[1] = buf[0];
         write(master, sbus, sizeof (sbus));
     }
 
