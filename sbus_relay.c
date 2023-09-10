@@ -134,9 +134,11 @@ int main(int argc, char **argv) {
 //        return EXIT_FAILURE;
 //    }
 
-    // via tty0tty
+    // via vtty
 
-    int master = open("/dev/tnt1", O_RDWR | O_NOCTTY | O_NDELAY);
+//    #define SLAVE_PATH "/dev/ttyV0"
+
+    int master = open("/dev/vtmx", O_RDWR);
     if (master == -1) { perror("open_port: Unable to open port − "); }
     else {fcntl(master, F_SETFL, 0);}
 
