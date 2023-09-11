@@ -72,12 +72,49 @@ int bind_socket(in_port_t port) {
 
 void deserialise_channels(const uint8_t (*const buf)[BUF_MAX_SIZE], float (*channels)[MAX_CHANNELS])
 {
-    const uint8_t n = (*buf)[0];
+    const uint8_t n = (*buf)[0]; // number of sent channels
+//    for(size_t i=0; i<n; i++)
+//    {
+//        // TODO: unpack float32
+//        (*channels)[i] = buf[];
+//    }
+//    const float aa = 1.22f;
+//    printf("1.0: %X\n", *(unsigned int*)&aa);
+    printf("b1: %X\n", (*buf)[1]);
+    printf("b2: %X\n", (*buf)[2]);
+    printf("b3: %X\n", (*buf)[3]);
+    printf("b4: %X\n", (*buf)[4]);
+    fflush(stdout);
+
+//    union {
+//        float f;
+//        uint8_t b[4];
+//    } fb;
+
+//    (*channels)[0] = ((*buf)[1] << 24) | ((*buf)[2] << 16) | ((*buf)[3] << 8) | ((*buf)[4]); // ??
+//    (*channels)[0] = ((*buf)[4] << 24) | ((*buf)[3] << 16) | ((*buf)[2] << 8) | ((*buf)[1]);
+//    fb.f = (*buf[1]) << 24 | (*buf[2]) << 16 | (*buf[3]) << 8 | (*buf[4]);
+
+//    const uint32_t bb = ((*buf)[1] << 24) | ((*buf)[2] << 16) | ((*buf)[3] << 8) | ((*buf)[4]);
+//    (*channels)[0] = *(float*)&bb;
+
     for(size_t i=0; i<n; i++)
     {
-        // TODO: unpack float32
-//        (*channels)[i] = ...;
+        const uint32_t bb = ((*buf)[1 + i*4] << 24) | ((*buf)[1 + i*4 + 1] << 16) | ((*buf)[1 + i*4 + 2] << 8) | ((*buf)[1 + i*4 + 3]);
+        (*channels)[i] = *(float*)&bb;
     }
+
+//    fb.b[0] = (*buf)[4];
+//    fb.b[1] = (*buf)[3];
+//    fb.b[2] = (*buf)[2];
+//    fb.b[3] = (*buf)[1];
+
+//    (*channels)[0] = (float) ((*buf[1]) << 24);
+
+//    printf("ch1: %x\n", *(unsigned int*)&(*channels)[0]);
+//    printf("ch1: %X\n", (*channels)[0]); fflush(stdout);
+//    fflush(stdout);
+    printf("ch %f\n", (*channels)[0]);
 }
 
 void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*sbus)[25])
@@ -246,8 +283,7 @@ int main(int argc, char **argv) {
 ////        uint8_t footer;
 //    };
 //    printf("sbus_t size: %lu\n", sizeof(struct sbus_t)); fflush(stdout);
-    uint8_t sbus[25];
-    memset(sbus, 0, sizeof(sbus));
+    uint8_t sbus[25] = {0};
     sbus[0] = 0x0F;
 //    sbus[1] = 100;
 //    struct sbus_t sbus;
@@ -262,10 +298,12 @@ int main(int argc, char **argv) {
 
     while (running) {
         //
+#if 1
         struct sockaddr_storage peer_addr;
         socklen_t peer_addr_len;
+#endif
         ssize_t nread;
-        uint8_t buf[BUF_MAX_SIZE];
+        uint8_t buf[BUF_MAX_SIZE] = {0};
 
         printf("recvfrom...\n"); fflush(stdout);
 //        nread = recvfrom(socketfd, buf, BUF_SIZE, 0, (struct sockaddr *) &peer_addr, &peer_addr_len);
@@ -277,24 +315,44 @@ int main(int argc, char **argv) {
 
         peer_addr_len = sizeof(struct sockaddr_storage);
         nread = recvfrom(socketfd, buf, BUF_MAX_SIZE, 0,
-                         (struct sockaddr *) &peer_addr, &peer_addr_len);
-        if (nread == -1)
+#if 1
+                         (struct sockaddr *) &peer_addr, &peer_addr_len
+#endif
+                         );
+        if (nread == -1) {
+            perror("Failed to read from socket: ");
             continue;
+        }
 
+        if ((uint8_t)nread > BUF_MAX_SIZE)
+        {
+            fprintf(stderr, "Message too large!\n");
+            continue;
+        }
+
+        if ((uint8_t)buf[0] > MAX_CHANNELS)
+        {
+            fprintf(stderr, "Too many channels!\n");
+            continue;
+        }
+
+#if 1
         char host[NI_MAXHOST], service[NI_MAXSERV];
 
         int s = getnameinfo((struct sockaddr *) &peer_addr,
                         peer_addr_len, host, NI_MAXHOST,
                         service, NI_MAXSERV, NI_NUMERICSERV);
         if (s == 0) {
-            printf("Received %ld bytes from %s:%s\n",
-                   (long) nread, host, service);
-            printf("buf: %s\n", buf); fflush(stdout);
+            printf("Received %ld bytes from %s:%s\n", (long) nread, host, service);
+//            printf("buf: %s\n", buf); fflush(stdout);
         }
         else
             fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
+#endif
 
-        float channels[MAX_CHANNELS];
+        // TODO: check buf given size with nread!
+
+        float channels[MAX_CHANNELS] = {0};
         deserialise_channels(&buf, &channels);
         serialise_channels(&channels, &sbus);
 
