@@ -296,6 +296,9 @@ int main(int argc, char **argv) {
 
 //    return 0;
 
+    // example how to format and send channel data:
+    //  import socket, struct; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(bytearray(struct.pack("!Bffff", 4, *(0.5, 0.25, -0.3, -1.0))), ("127.0.0.1", 51324))
+
     while (running) {
         //
 #if 1
