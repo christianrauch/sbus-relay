@@ -20,7 +20,9 @@
 
 #define PORT 51324
 
-#define LINK "/tmp/SBUS"
+#define MASTER "/dev/vtmx"
+
+#define LINK_SLAVE "/tmp/SBUS"
 
 #define MAX_CHANNELS 16
 // uint8 len + 16 * float32 (4) = 65 bytes max
@@ -240,7 +242,7 @@ int main(int argc, char **argv) {
 
 //    #define SLAVE_PATH "/dev/ttyV0"
 
-    int master = open("/dev/vtmx", O_WRONLY);
+    int master = open(MASTER, O_WRONLY);
     if (master == -1) { perror("Unable to open port: "); }
     else {fcntl(master, F_SETFL, 0);}
 
@@ -283,8 +285,8 @@ int main(int argc, char **argv) {
 ////        uint8_t footer;
 //    };
 //    printf("sbus_t size: %lu\n", sizeof(struct sbus_t)); fflush(stdout);
-    uint8_t sbus[25] = {0};
-    sbus[0] = 0x0F;
+//    uint8_t sbus[25] = {0};
+//    sbus[0] = 0x0F;
 //    sbus[1] = 100;
 //    struct sbus_t sbus;
 //    sbus.header = 0x0F;
@@ -357,6 +359,7 @@ int main(int argc, char **argv) {
 
         float channels[MAX_CHANNELS] = {0};
         deserialise_channels(&buf, &channels);
+        uint8_t sbus[25] = {0};
         serialise_channels(&channels, &sbus);
 
 //        // reset
@@ -368,7 +371,7 @@ int main(int argc, char **argv) {
 ////        write(fd, buf, nread);
 ////        write(fd, sbus, 24);
 ////        sbus[1] = buf[0];
-        write(master, sbus, sizeof (sbus));
+        write(master, sbus, 25 * sizeof(uint8_t));
     }
 
     printf("bye!\n"); fflush(stdout);
