@@ -116,7 +116,7 @@ void deserialise_channels(const uint8_t (*const buf)[BUF_MAX_SIZE], float (*chan
 //    printf("ch1: %x\n", *(unsigned int*)&(*channels)[0]);
 //    printf("ch1: %X\n", (*channels)[0]); fflush(stdout);
 //    fflush(stdout);
-    printf("ch %f\n", (*channels)[0]);
+//    printf("ch %f\n", (*channels)[0]);
 }
 
 void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*sbus)[25])
@@ -336,9 +336,10 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        if ((uint8_t)buf[0] > MAX_CHANNELS)
+        const uint8_t n = buf[0];
+        if (n > MAX_CHANNELS)
         {
-            fprintf(stderr, "Too many channels!\n");
+            fprintf(stderr, "Too many channels (%d)!\n", n);
             continue;
         }
 
@@ -362,6 +363,13 @@ int main(int argc, char **argv) {
         deserialise_channels(&buf, &channels);
         uint8_t sbus[25] = {0};
         serialise_channels(&channels, &sbus);
+
+//        printf("Received %ld bytes from %s:%s\n", (long) nread, host, service);
+        printf("channels(%d): ", n);
+        for(int i=0; i<MAX_CHANNELS; i++) {
+            printf("%f, ", channels[i]);
+        }
+        printf("\n");
 
 //        // reset
 //        memset(sbus, 0, sizeof(sbus));
