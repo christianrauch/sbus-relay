@@ -128,10 +128,11 @@ void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*s
 
     uint16_t channels_us[MAX_CHANNELS];
 
-    // map -1...+1 to 1000...2000 us
+    // map 0...1 to 1000...2000 us
     for(size_t i=0; i<MAX_CHANNELS; i++)
     {
-        channels_us[i] = 1500 + 500 * fmaxf(-1, fminf((*channels)[i], +1));
+//        channels_us[i] = 1500 + 500 * fmaxf(-1, fminf((*channels)[i], +1));
+        channels_us[i] = 1000 + 1000 * fmaxf(0, fminf((*channels)[i], 1));
         // only need the first 11 bits
     }
 
@@ -299,7 +300,7 @@ int main(int argc, char **argv) {
 //    return 0;
 
     // example how to format and send channel data:
-    //  import socket, struct; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(bytearray(struct.pack("!Bffff", 4, *(0.5, 0.25, -0.3, -1.0))), ("127.0.0.1", 51324))
+    //  import socket, struct; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(bytearray(struct.pack("!Bffff", 4, *(0.5, 0.25, 0.3, 1.0))), ("127.0.0.1", 51324))
 
     while (running) {
         //
