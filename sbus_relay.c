@@ -137,7 +137,8 @@ void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*s
     for(size_t i=0; i<MAX_CHANNELS; i++)
     {
 //        channels_us[i] = 1500 + 500 * fmaxf(-1, fminf((*channels)[i], +1));
-        channels_us[i] = 1000 + 1000 * fmaxf(0, fminf((*channels)[i], 1));
+//        channels_us[i] = 1000 + 1000 * fmaxf(0, fminf((*channels)[i], 1));
+        channels_us[i] = 2000 * fmaxf(0, fminf((*channels)[i], 1));
         // only need the first 11 bits
     }
 
