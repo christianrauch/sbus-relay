@@ -247,6 +247,14 @@ int main(int argc, char **argv) {
     if (master == -1) { perror("Unable to open port: "); }
     else {fcntl(master, F_SETFL, 0);}
 
+#define VTMX_GET_VTTY_NUM (TIOCGPTN)
+#define VTMX_SET_MODEM_LINES (TIOCMSET)
+    unsigned int rv = ~0;
+    ioctl(master, VTMX_GET_VTTY_NUM, &rv);
+    char slave_path[100];
+    snprintf(slave_path, 100, "/dev/ttyV%d", rv);
+    printf("slave: %s\n", slave_path);
+
 
     // OLD way:
 //    const int socketfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -310,6 +318,7 @@ int main(int argc, char **argv) {
 #endif
         ssize_t nread;
         uint8_t buf[BUF_MAX_SIZE] = {0};
+        // TODO: need magic byte to distinguish pings
 
         printf("recvfrom...\n"); fflush(stdout);
 //        nread = recvfrom(socketfd, buf, BUF_SIZE, 0, (struct sockaddr *) &peer_addr, &peer_addr_len);
