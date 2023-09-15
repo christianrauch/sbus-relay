@@ -8,10 +8,13 @@
 #include <stdio.h>
 //#include <netinet/in.h>
 #include <stdbool.h>
-#include <pty.h>
+//#include <pty.h>
 #include <signal.h>
 #include <fcntl.h>
 #include  <math.h>
+//#include <termios.h>
+//#include <sys/ioctl.h>
+#include <asm/termios.h>
 
 
 // https://beej.us/guide/bgnet/
@@ -20,7 +23,9 @@
 
 #define PORT 51324
 
-#define MASTER "/dev/vtmx"
+//#define MASTER "/dev/vtmx"
+
+#define MASTER "/dev/tnt0"
 
 #define LINK_SLAVE "/tmp/SBUS"
 
@@ -247,13 +252,28 @@ int main(int argc, char **argv) {
     if (master == -1) { perror("Unable to open port: "); }
     else {fcntl(master, F_SETFL, 0);}
 
-#define VTMX_GET_VTTY_NUM (TIOCGPTN)
-#define VTMX_SET_MODEM_LINES (TIOCMSET)
-    unsigned int rv = ~0;
-    ioctl(master, VTMX_GET_VTTY_NUM, &rv);
-    char slave_path[100];
-    snprintf(slave_path, 100, "/dev/ttyV%d", rv);
-    printf("slave: %s\n", slave_path);
+//#define VTMX_GET_VTTY_NUM (TIOCGPTN)
+//#define VTMX_SET_MODEM_LINES (TIOCMSET)
+//    unsigned int rv = ~0;
+//    ioctl(master, VTMX_GET_VTTY_NUM, &rv);
+//    char slave_path[100];
+//    snprintf(slave_path, 100, "/dev/ttyV%d", rv);
+//    printf("slave: %s\n", slave_path);
+
+//    unsigned int a;
+//    a = TIOCM_RTS /* should be ignored */ | TIOCM_CTS;
+//    ioctl(master, VTMX_SET_MODEM_LINES, &a);
+
+//    #define SBUS_BAUD 100000
+//    struct termios2 tio;
+//    ioctl(master, TCGETS2, &tio);
+//    tio.c_cflag &= ~CBAUD;
+//    tio.c_cflag |= BOTHER;
+//    tio.c_ospeed = SBUS_BAUD;
+//    tio.c_cflag &= ~(CBAUD << IBSHIFT);
+//    tio.c_cflag |= BOTHER << IBSHIFT;
+//    tio.c_ispeed = SBUS_BAUD;
+//    ioctl(master, TCSETS2, &tio);
 
 
     // OLD way:
