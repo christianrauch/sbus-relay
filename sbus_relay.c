@@ -30,8 +30,8 @@
 #define LINK_SLAVE "/tmp/SBUS"
 
 #define MAX_CHANNELS 16
-// uint8 len + 16 * float32 (4) = 65 bytes max
-#define BUF_MAX_SIZE sizeof(uint8_t) + sizeof(float) * MAX_CHANNELS
+// uint8 magic + uint8 len + 16 * float32 (4) = 65 bytes max
+#define BUF_MAX_SIZE sizeof(uint8_t) + sizeof(uint8_t) + sizeof(float) * MAX_CHANNELS
 
 int bind_socket(in_port_t port) {
     const struct addrinfo hints = {
@@ -79,7 +79,7 @@ int bind_socket(in_port_t port) {
 
 void deserialise_channels(const uint8_t (*const buf)[BUF_MAX_SIZE], float (*channels)[MAX_CHANNELS])
 {
-    const uint8_t n = (*buf)[0]; // number of sent channels
+    const uint8_t n = (*buf)[1]; // number of sent channels
 //    for(size_t i=0; i<n; i++)
 //    {
 //        // TODO: unpack float32
@@ -107,7 +107,7 @@ void deserialise_channels(const uint8_t (*const buf)[BUF_MAX_SIZE], float (*chan
 
     for(size_t i=0; i<n; i++)
     {
-        const uint32_t bb = ((*buf)[1 + i*4] << 24) | ((*buf)[1 + i*4 + 1] << 16) | ((*buf)[1 + i*4 + 2] << 8) | ((*buf)[1 + i*4 + 3]);
+        const uint32_t bb = ((*buf)[2 + i*4] << 24) | ((*buf)[2 + i*4 + 1] << 16) | ((*buf)[2 + i*4 + 2] << 8) | ((*buf)[2 + i*4 + 3]);
         (*channels)[i] = *(float*)&bb;
     }
 
@@ -329,7 +329,7 @@ int main(int argc, char **argv) {
 //    return 0;
 
     // example how to format and send channel data:
-    //  import socket, struct; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(bytearray(struct.pack("!Bffff", 4, *(0.5, 0.25, 0.3, 1.0))), ("127.0.0.1", 51324))
+    //  import socket, struct; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(bytearray(struct.pack("!BBffff", 0x0F, 4, *(0.5, 0.25, 0.3, 1.0))), ("127.0.0.1", 51324))
 
     while (running) {
         //
@@ -366,7 +366,13 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        const uint8_t n = buf[0];
+        if (buf[0] != 0x0F)
+        {
+            fprintf(stderr, "invalid package!\n");
+            continue;
+        }
+
+        const uint8_t n = buf[1];
         if (n > MAX_CHANNELS)
         {
             fprintf(stderr, "Too many channels (%d)!\n", n);
