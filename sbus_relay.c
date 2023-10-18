@@ -16,10 +16,9 @@
 //#include <sys/ioctl.h>
 #include <asm/termios.h>
 
+#define _GNU_SOURCE
+#include <stdio.h>
 
-// https://beej.us/guide/bgnet/
-
-#define PROJECT_NAME "sbus-relay"
 
 #define PORT 51324
 
@@ -27,11 +26,12 @@
 
 #define MASTER "/dev/tnt0"
 
-#define LINK_SLAVE "/tmp/SBUS"
+//#define LINK_SLAVE "/tmp/SBUS"
 
 #define MAX_CHANNELS 16
-// uint8 magic + uint8 len + 16 * float32 (4) = 65 bytes max
+// uint8 magic + uint8 len + 16 * float32 (4) = 66 bytes
 #define BUF_MAX_SIZE sizeof(uint8_t) + sizeof(uint8_t) + sizeof(float) * MAX_CHANNELS
+
 
 int bind_socket(in_port_t port) {
     const struct addrinfo hints = {
@@ -46,85 +46,64 @@ int bind_socket(in_port_t port) {
     };
 
     // convert port from int to string
-//    int length = snprintf_s(NULL, 0, "%d", port);
-    int length = snprintf(NULL, 0, "%d", port);
-    char* str = malloc( length + 1 );
-    snprintf(str, length + 1, "%d", port);
+    char **port_str = NULL;
+    if (asprintf(port_str, "%d", port) < 0) {
+        fprintf(stderr, "Failed to convert port\n");
+        return -1;
+    }
 
     struct addrinfo *res;
 
-    const int err = getaddrinfo(NULL, str, &hints, &res);
+    const int err = getaddrinfo(NULL, *port_str, &hints, &res);
     if(err != 0) {
         fprintf(stderr, "Failed to get : %s\n", gai_strerror(err));
-        return EXIT_FAILURE;
+        return -1;
     }
 
     const int socketfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (socketfd == -1) {
         perror("Failed to create socket");
-        return EXIT_FAILURE;
+        return -1;
     }
 
     if(bind(socketfd, res->ai_addr, res->ai_addrlen) == -1) {
         perror("Failed to bind address");
-        return EXIT_FAILURE;
+        return -1;
     }
 
-    free(str);
+    free(port_str);
 
     freeaddrinfo(res);
 
     return socketfd;
 }
 
-void deserialise_channels(const uint8_t (*const buf)[BUF_MAX_SIZE], float (*channels)[MAX_CHANNELS])
+bool deserialise_channels(const uint8_t (*const buf)[BUF_MAX_SIZE], float (*const channels)[MAX_CHANNELS])
 {
+    if ((*buf[0]) != 0x0F)
+    {
+        fprintf(stderr, "invalid package!\n");
+        return false;
+    }
+
     const uint8_t n = (*buf)[1]; // number of sent channels
-//    for(size_t i=0; i<n; i++)
-//    {
-//        // TODO: unpack float32
-//        (*channels)[i] = buf[];
-//    }
-//    const float aa = 1.22f;
-//    printf("1.0: %X\n", *(unsigned int*)&aa);
-    printf("b1: %X\n", (*buf)[1]);
-    printf("b2: %X\n", (*buf)[2]);
-    printf("b3: %X\n", (*buf)[3]);
-    printf("b4: %X\n", (*buf)[4]);
-    fflush(stdout);
 
-//    union {
-//        float f;
-//        uint8_t b[4];
-//    } fb;
-
-//    (*channels)[0] = ((*buf)[1] << 24) | ((*buf)[2] << 16) | ((*buf)[3] << 8) | ((*buf)[4]); // ??
-//    (*channels)[0] = ((*buf)[4] << 24) | ((*buf)[3] << 16) | ((*buf)[2] << 8) | ((*buf)[1]);
-//    fb.f = (*buf[1]) << 24 | (*buf[2]) << 16 | (*buf[3]) << 8 | (*buf[4]);
-
-//    const uint32_t bb = ((*buf)[1] << 24) | ((*buf)[2] << 16) | ((*buf)[3] << 8) | ((*buf)[4]);
-//    (*channels)[0] = *(float*)&bb;
+    if (n > MAX_CHANNELS)
+    {
+        fprintf(stderr, "Too many channels (%d)!\n", n);
+        return false;
+    }
 
     for(size_t i=0; i<n; i++)
     {
         const uint32_t bb = ((*buf)[2 + i*4] << 24) | ((*buf)[2 + i*4 + 1] << 16) | ((*buf)[2 + i*4 + 2] << 8) | ((*buf)[2 + i*4 + 3]);
-        (*channels)[i] = *(float*)&bb;
+        (*channels)[i] = *(float *const)&bb;
     }
 
-//    fb.b[0] = (*buf)[4];
-//    fb.b[1] = (*buf)[3];
-//    fb.b[2] = (*buf)[2];
-//    fb.b[3] = (*buf)[1];
-
-//    (*channels)[0] = (float) ((*buf[1]) << 24);
-
-//    printf("ch1: %x\n", *(unsigned int*)&(*channels)[0]);
-//    printf("ch1: %X\n", (*channels)[0]); fflush(stdout);
-//    fflush(stdout);
-//    printf("ch %f\n", (*channels)[0]);
+    return true;
 }
 
-void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*sbus)[25])
+void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*const sbus)[25])
 {
     // https://github.com/bolderflight/sbus/blob/main/README.md
     memset(sbus, 0, 25 * sizeof(uint8_t));
@@ -133,13 +112,10 @@ void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*s
 
     uint16_t channels_us[MAX_CHANNELS];
 
-    // map 0...1 to 1000...2000 us
+    // map 0...1 to 0...2000 us
     for(size_t i=0; i<MAX_CHANNELS; i++)
     {
-//        channels_us[i] = 1500 + 500 * fmaxf(-1, fminf((*channels)[i], +1));
-//        channels_us[i] = 1000 + 1000 * fmaxf(0, fminf((*channels)[i], 1));
         channels_us[i] = 2000 * fmaxf(0, fminf((*channels)[i], 1));
-        // only need the first 11 bits
     }
 
     // pack channels as 11bit integer
@@ -173,7 +149,6 @@ void serialise_channels(const float (*const channels)[MAX_CHANNELS], uint8_t (*s
     (*sbus)[20] = (uint8_t) ((channels_us[13] & 0x07FF)>>9 | (channels_us[14] & 0x07FF)<<2);
     (*sbus)[21] = (uint8_t) ((channels_us[14] & 0x07FF)>>6 | (channels_us[15] & 0x07FF)<<5);
     (*sbus)[22] = (uint8_t) ((channels_us[15] & 0x07FF)>>3);
-
 }
 
 bool running = true;
@@ -192,11 +167,6 @@ void sig_handler(int signum){
 }
 
 int main(int argc, char **argv) {
-    if(argc != 1) {
-        printf("%s takes no arguments.\n", argv[0]);
-        return 1;
-    }
-    printf("This is project %s.\n", PROJECT_NAME);
 
 //    int master;
 //    int slave;
@@ -250,8 +220,8 @@ int main(int argc, char **argv) {
 //    #define SLAVE_PATH "/dev/ttyV0"
 
     int master = open(MASTER, O_WRONLY);
-    if (master == -1) { perror("Unable to open port: "); }
-    else {fcntl(master, F_SETFL, 0);}
+    if (master == -1) { perror("Unable to open master port"); }
+//    else {fcntl(master, F_SETFL, 0);}
 
 //#define VTMX_GET_VTTY_NUM (TIOCGPTN)
 //#define VTMX_SET_MODEM_LINES (TIOCMSET)
@@ -276,30 +246,6 @@ int main(int argc, char **argv) {
 //    tio.c_ispeed = SBUS_BAUD;
 //    ioctl(master, TCSETS2, &tio);
 
-
-    // OLD way:
-//    const int socketfd = socket(AF_INET, SOCK_DGRAM, 0);
-//    if (socketfd == -1) {
-//        perror("Failed to create socket: ");
-//        return EXIT_FAILURE;
-//    }
-
-//    const struct sockaddr_in addr = {
-//        .sin_family = AF_INET,
-//        .sin_addr.s_addr = INADDR_ANY,
-//        .sin_port = htons(51324),
-//    };
-
-//    if(bind(socketfd, (struct sockaddr*)&addr, sizeof(struct sockaddr_in)) == -1) {
-//        perror("Failed to bind address: ");
-//        return EXIT_FAILURE;
-//    }
-
-//    int n = write(fd, "ATZ\r", 4);
-//    if (n < 0)
-//        fputs("write() of 4 bytes failed!\n", stderr);
-
-    // NEW way:
     const int socketfd = bind_socket(PORT);
 
     signal(SIGINT, sig_handler);
@@ -331,15 +277,21 @@ int main(int argc, char **argv) {
     // example how to format and send channel data:
     //  import socket, struct; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(bytearray(struct.pack("!BBffff", 0x0F, 4, *(0.5, 0.25, 0.3, 1.0))), ("127.0.0.1", 51324))
 
+#if 1
+    struct sockaddr_storage peer_addr;
+    socklen_t peer_addr_len;
+#endif
+    ssize_t nread;
+    uint8_t buf[BUF_MAX_SIZE];
+
+    float channels[MAX_CHANNELS];
+    uint8_t sbus[25];
+
     while (running) {
         //
-#if 1
-        struct sockaddr_storage peer_addr;
-        socklen_t peer_addr_len;
-#endif
-        ssize_t nread;
-        uint8_t buf[BUF_MAX_SIZE] = {0};
-        // TODO: need magic byte to distinguish pings
+
+//        buf = {0};
+        memset(buf, 0, sizeof(buf));
 
         printf("recvfrom...\n"); fflush(stdout);
 //        nread = recvfrom(socketfd, buf, BUF_SIZE, 0, (struct sockaddr *) &peer_addr, &peer_addr_len);
@@ -356,7 +308,7 @@ int main(int argc, char **argv) {
 #endif
                          );
         if (nread == -1) {
-            perror("Failed to read from socket: ");
+            perror("Failed to read from socket");
             continue;
         }
 
@@ -366,14 +318,14 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        if (buf[0] != 0x0F)
-        {
-            fprintf(stderr, "invalid package!\n");
-            continue;
-        }
+//        if (buf[0] != 0x0F)
+//        {
+//            fprintf(stderr, "invalid package!\n");
+//            continue;
+//        }
 
         const uint8_t n = buf[1];
-        if (n > MAX_CHANNELS)
+        if (n * sizeof(float) > (uint8_t)nread)
         {
             fprintf(stderr, "Too many channels (%d)!\n", n);
             continue;
@@ -393,11 +345,12 @@ int main(int argc, char **argv) {
             fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
 #endif
 
-        // TODO: check buf given size with nread!
-
-        float channels[MAX_CHANNELS] = {0};
+        // convert data
+//        float channels[MAX_CHANNELS] = {0};
+//        uint8_t sbus[25] = {0};
+        memset(channels, 0, sizeof(channels));
+        memset(sbus, 0, sizeof(sbus));
         deserialise_channels(&buf, &channels);
-        uint8_t sbus[25] = {0};
         serialise_channels(&channels, &sbus);
 
 //        printf("Received %ld bytes from %s:%s\n", (long) nread, host, service);
@@ -407,23 +360,12 @@ int main(int argc, char **argv) {
         }
         printf("\n");
 
-//        // reset
-//        memset(sbus, 0, sizeof(sbus));
-//        sbus[0] = 0x0F;
-////        ssize_t size = read(master, buf, BUF_SIZE);
-////        write(master, buf, nread);
-//        memcpy(&sbus[1], buf, 23);
-////        write(fd, buf, nread);
-////        write(fd, sbus, 24);
-////        sbus[1] = buf[0];
         write(master, sbus, 25 * sizeof(uint8_t));
     }
 
     printf("bye!\n"); fflush(stdout);
 
     close(socketfd);
-
-
 
     return EXIT_SUCCESS;
 }
